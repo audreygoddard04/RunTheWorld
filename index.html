@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run the World</title>
+<link rel="stylesheet" href="styles.css">
+<script src="https://unpkg.com/globe.gl@2.45.3/dist/globe.gl.min.js"></script>
+<style>
+  html, body { height: 100%; }
+  body { background: #ffffff; margin: 0; }
+  a { color: #8c491a; }
+  a:hover { color: #c67139; }
+
+  .rtw-app {
+    position: relative; width: 100vw; height: 100vh; overflow: hidden;
+    font-family: var(--font-body); background: #ffffff;
+    --panel: #f7efe1; --ink: #201e1d; --muted: rgba(32,30,29,.62); --border: rgba(32,30,29,.16);
+    --terra: #c67139; --terraink: #8c491a; --sage: #7a8a5e; --heat: #fc4c02; --onterra: #fff9f2;
+    --shadow: 0 12px 32px rgba(32,30,29,.18);
+  }
+  #globe { position: absolute; inset: 0; z-index: 1; }
+  .rtw-overlay { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+
+  .rtw-scroll::-webkit-scrollbar { width: 8px; }
+  .rtw-scroll::-webkit-scrollbar-thumb { background: rgba(32,30,29,.18); border-radius: 999px; }
+  .rtw-row { cursor: pointer; }
+  .rtw-row:hover { background: rgba(32,30,29,.06); }
+
+  [hidden] { display: none !important; }
+
+  /* — header — */
+  .rtw-header {
+    position: absolute; top: 0; left: 0; right: 0; padding: 16px 22px;
+    display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap;
+    background: linear-gradient(180deg, rgba(255,255,255,.97) 0%, rgba(255,255,255,.78) 58%, transparent 100%);
+  }
+  .rtw-brand { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
+  .rtw-brand img { width: 52px; height: 52px; flex: none; mix-blend-mode: multiply; }
+  .rtw-brand-text { display: flex; flex-direction: column; gap: 2px; }
+  .rtw-brand-title { font-family: var(--font-heading); font-size: 23px; line-height: 1; color: var(--ink); white-space: nowrap; }
+  .rtw-brand-tag { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+
+  .rtw-seg { display: inline-flex; pointer-events: auto; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.86); margin-top: 6px; }
+  .rtw-seg-item { padding: 9px 16px; font-size: 12.5px; cursor: pointer; white-space: nowrap; background: transparent; color: rgba(32,30,29,.62); }
+  .rtw-seg-item + .rtw-seg-item { border-left: 1px solid var(--border); }
+  .rtw-seg-item.active { background: #c67139; color: #fff9f2; }
+
+  .rtw-header-spacer { flex: 1; min-width: 12px; }
+  .rtw-header-actions { display: flex; align-items: center; gap: 9px; pointer-events: auto; margin-top: 6px; flex-wrap: wrap; }
+  .rtw-pill-btn { border: 1px solid var(--border); color: var(--ink); font-size: 12.5px; padding: 9px 16px; border-radius: 999px; cursor: pointer; white-space: nowrap; background: rgba(255,255,255,.86); }
+  .rtw-pill-btn-primary { background: var(--terra); color: var(--onterra); font-family: var(--font-heading); font-size: 12.5px; padding: 10px 18px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+
+  /* — community rail — */
+  #communityRail {
+    position: absolute; left: 22px; top: var(--header-h, 100px); width: 274px; max-height: calc(100% - var(--header-h, 100px) - 22px);
+    display: flex; flex-direction: column; pointer-events: auto; overflow-y: auto; overflow-x: hidden;
+    padding-right: 6px; box-sizing: border-box;
+  }
+  .rtw-card { flex: none; pointer-events: auto; background: var(--panel); border-radius: 20px; box-shadow: var(--shadow); padding: 20px; box-sizing: border-box; }
+  .rtw-kicker { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+  .rtw-progress-num { font-family: var(--font-heading); font-size: 52px; line-height: .9; color: var(--heat); }
+  .rtw-progress-row { display: flex; align-items: baseline; gap: 8px; }
+  .rtw-progress-goal { font-size: 13px; color: var(--ink); }
+  .rtw-progress-track { height: 9px; border-radius: 999px; background: rgba(32,30,29,.12); margin: 14px 0 8px; overflow: hidden; }
+  .rtw-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg,#fc4c02,#ffa032); }
+  .rtw-remaining { font-size: 12.5px; color: var(--ink); }
+  .rtw-hr { height: 1px; background: var(--border); margin: 16px 0 12px; }
+  .rtw-legend-row { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .rtw-legend-swatch { width: 20px; height: 13px; border-radius: 4px; flex: none; }
+  .rtw-bullets { display: flex; flex-direction: column; gap: 7px; }
+  .rtw-bullet { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--ink); }
+  .rtw-bullet-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--heat); flex: none; }
+  .rtw-stats { display: flex; gap: 22px; }
+  .rtw-stat-num { font-family: var(--font-heading); font-size: 19px; color: var(--ink); line-height: 1; }
+  .rtw-stat-label { font-size: 10px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
+
+  #feedCard { margin-top: 12px; padding: 15px 18px 6px; }
+  .rtw-feed-row { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(32,30,29,.12); }
+  .rtw-feed-flag { font-size: 16px; line-height: 1; flex: none; }
+  .rtw-feed-head { font-size: 12.5px; line-height: 1.3; overflow-wrap: anywhere; }
+  .rtw-feed-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+  .rtw-feed-new { font-size: 8.5px; letter-spacing: .1em; background: var(--heat); color: #fff9f2; padding: 3px 7px; border-radius: 999px; flex: none; }
+
+  /* — races toolbar — */
+  #racesToolbar { position: absolute; top: calc(var(--header-h, 82px) + 16px); left: 22px; right: 22px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; pointer-events: auto; }
+  .rtw-select { background: var(--panel); border: 1px solid var(--border); color: var(--ink); border-radius: 999px; padding: 8px 14px; font-size: 12px; font-family: var(--font-body); }
+  #searchWrap { flex: 1; min-width: 180px; max-width: 300px; position: relative; }
+  #searchInput { background: var(--panel); border: 1px solid var(--border); color: var(--ink); border-radius: 999px; width: 100%; box-sizing: border-box; padding: 9px 16px; font-size: 12.5px; font-family: var(--font-body); }
+  #searchResults { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: var(--panel); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; z-index: 30; max-height: 280px; overflow-y: auto; }
+  .rtw-search-row { padding: 10px 16px; cursor: pointer; font-size: 13px; display: flex; justify-content: space-between; gap: 10px; color: var(--ink); }
+  .rtw-search-empty { padding: 14px 16px; font-size: 13px; color: var(--muted); }
+  #racesLegend { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+  #racesLegend span span { display: inline-block; border-radius: 50%; margin-right: 6px; }
+
+  /* — quest widget — */
+  #questWidget { position: absolute; right: 26px; bottom: 26px; pointer-events: auto; }
+  #questButton { width: 92px; height: 92px; border-radius: 50%; position: relative; display: flex; align-items: center; justify-content: center; cursor: pointer; background: var(--panel); box-shadow: var(--shadow); }
+  #questRing { position: absolute; inset: 0; border-radius: 50%; -webkit-mask: radial-gradient(circle,transparent 62%,#000 63%); mask: radial-gradient(circle,transparent 62%,#000 63%); }
+  #questCountText { font-family: var(--font-heading); font-size: 16px; color: var(--ink); }
+  #questLabel { font-size: 7.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  #questPanel { position: absolute; right: 0; bottom: 104px; width: 232px; background: var(--panel); border-radius: 18px; padding: 15px; box-shadow: var(--shadow); }
+  .rtw-quest-title { font-family: var(--font-heading); font-size: 13px; color: var(--ink); margin-bottom: 8px; }
+  .rtw-quest-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--ink); cursor: pointer; }
+  .rtw-quest-item input { accent-color: #fc4c02; width: 14px; height: 14px; }
+
+  /* — tooltip — */
+  #tooltip { position: absolute; z-index: 25; background: var(--panel); border-radius: 12px; padding: 10px 14px; pointer-events: none; box-shadow: var(--shadow); max-width: 240px; }
+  #tooltip .rtw-tt-title { font-family: var(--font-heading); font-size: 14px; color: var(--ink); }
+  #tooltip .rtw-tt-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* — slide panels (country / marathon) — */
+  .slide-panel { z-index: 22; background: var(--panel); box-shadow: var(--shadow); transition: transform .42s cubic-bezier(.22,1,.36,1); pointer-events: auto; position: absolute; }
+  @media (min-width: 900px) {
+    .slide-panel { top: 0; right: 0; bottom: 0; width: 376px; transform: translateX(105%); }
+    .slide-panel.open { transform: translateX(0); }
+  }
+  @media (max-width: 899px) {
+    .slide-panel { left: 0; right: 0; bottom: 0; height: 64vh; max-height: 540px; border-radius: 24px 24px 0 0; transform: translateY(105%); }
+    .slide-panel.open { transform: translateY(0); }
+  }
+  .rtw-panel-body { position: relative; height: 100%; display: flex; flex-direction: column; padding: 26px 24px; overflow-y: auto; box-sizing: border-box; }
+  .rtw-panel-close { position: absolute; top: 18px; right: 18px; width: 32px; height: 32px; border-radius: 50%; background: rgba(32,30,29,.08); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; color: var(--ink); }
+  .rtw-run-card { background: rgba(32,30,29,.05); border-radius: 14px; padding: 12px 14px; }
+
+  /* — drawers (countries / recommender) — */
+  .drawer { position: absolute; top: 0; left: 0; right: 0; background: var(--panel); box-shadow: var(--shadow); max-height: 86vh; overflow-y: auto; transform: translateY(-105%); transition: transform .42s cubic-bezier(.22,1,.36,1); pointer-events: auto; }
+  .drawer.open { transform: translateY(0); }
+  #countriesDrawer { z-index: 27; }
+  #recDrawer { z-index: 28; }
+  .drawer-inner { max-width: 1080px; margin: 0 auto; padding: 24px 28px 30px; }
+  .drawer-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+  .drawer-title { font-family: var(--font-heading); font-size: 21px; color: var(--ink); }
+  .drawer-meta { font-size: 12.5px; color: var(--muted); }
+  .drawer-close { width: 30px; height: 30px; border-radius: 50%; background: rgba(32,30,29,.08); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink); flex: none; }
+  #countriesGrid { display: grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap: 8px; max-height: 56vh; overflow-y: auto; padding-top: 12px; }
+  .rtw-country-row { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 14px; background: rgba(32,30,29,.04); }
+  .rtw-country-flag { font-size: 20px; flex: none; }
+  .rtw-country-name { font-size: 13px; color: var(--ink); }
+  .rtw-country-meta { font-size: 10.5px; color: var(--muted); }
+
+  /* — add-run modal — */
+  #addModal { position: absolute; inset: 0; z-index: 32; display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box; background: rgba(32,30,29,.34); opacity: 0; visibility: hidden; transition: opacity .28s ease; pointer-events: none; }
+  #addModal.open { opacity: 1; visibility: visible; pointer-events: auto; }
+  #addModal .rtw-modal-card { width: 100%; max-width: 520px; background: var(--panel); border-radius: 24px; box-shadow: 0 24px 60px rgba(32,30,29,.3); padding: 26px 28px; box-sizing: border-box; max-height: 88vh; overflow-y: auto; }
+  .rtw-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .rtw-field { display: flex; flex-direction: column; gap: 5px; }
+  .rtw-field-full { grid-column: 1 / -1; }
+  .rtw-field label { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .rtw-field input, .rtw-field select, .rtw-field textarea {
+    background: #f8f0e2; border: 1px solid var(--border); color: var(--ink); border-radius: 999px;
+    padding: 11px 16px; font-size: 13px; font-family: var(--font-body); box-sizing: border-box; width: 100%;
+  }
+  .rtw-field textarea { border-radius: 18px; resize: vertical; }
+
+  /* — recommender — */
+  .rtw-rec-field { display: flex; flex-direction: column; gap: 5px; }
+  .rtw-rec-field label { font-size: 10.5px; color: var(--muted); }
+  .rtw-rec-field select { background: #f8f0e2; border: 1px solid var(--border); color: var(--ink); border-radius: 999px; padding: 9px 14px; font-size: 12.5px; min-width: 150px; font-family: var(--font-body); }
+  .rtw-goal-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; }
+  .rtw-goal-opt { padding: 9px 13px; font-size: 11.5px; cursor: pointer; white-space: nowrap; background: transparent; color: rgba(32,30,29,.62); }
+  .rtw-goal-opt + .rtw-goal-opt { border-left: 1px solid var(--border); }
+  .rtw-goal-opt.active { background: #c67139; color: #fff9f2; }
+  .rtw-rec-row { display: flex; align-items: center; gap: 14px; padding: 11px 14px; border-radius: 14px; background: rgba(32,30,29,.04); }
+  .rtw-rec-fit { font-family: var(--font-heading); font-size: 16px; color: #a83303; min-width: 32px; }
+  .rtw-rec-name { font-size: 13px; color: var(--ink); }
+  .rtw-rec-meta { font-size: 10.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="rtw-app" id="rtw">
+  <div id="globe"></div>
+
+  <div class="rtw-overlay">
+
+    <div class="rtw-header">
+      <div class="rtw-brand">
+        <img src="assets/run-the-world-logo.png" alt="Run the World">
+        <div class="rtw-brand-text">
+          <span class="rtw-brand-title">Run the World</span>
+          <span class="rtw-brand-tag">Exploring the world one run at a time.</span>
+        </div>
+      </div>
+
+      <div class="rtw-seg">
+        <span id="modeCommunity" class="rtw-seg-item active">The globe</span>
+        <span id="modeRaces" class="rtw-seg-item">Races</span>
+      </div>
+
+      <div class="rtw-header-spacer"></div>
+
+      <div class="rtw-header-actions">
+        <span id="btnCountries" class="rtw-pill-btn">Countries &middot; <span id="countryCountHeader">0</span></span>
+        <span id="btnAdd" class="rtw-pill-btn-primary">Add a run +</span>
+        <span id="btnFindRace" class="rtw-pill-btn-primary" hidden>Find my race &rarr;</span>
+      </div>
+    </div>
+
+    <div id="communityRail" class="rtw-scroll">
+      <div class="rtw-card">
+        <div class="rtw-kicker">Club progress</div>
+        <div class="rtw-progress-row">
+          <span class="rtw-progress-num" id="countryCount">0</span>
+          <span class="rtw-progress-goal">/ <span id="goalCount">100</span> countries</span>
+        </div>
+        <div class="rtw-progress-track"><div class="rtw-progress-fill" id="progressFill" style="width:0%;"></div></div>
+        <div class="rtw-remaining"><span id="remainingText">100 to go.</span></div>
+        <div class="rtw-hr"></div>
+        <div class="rtw-bullets" style="margin-bottom:14px;">
+          <div class="rtw-legend-row" style="color:var(--ink);">
+            <span class="rtw-legend-swatch" style="background:#fc6f14;border:1.5px solid #fff6ea;box-shadow:0 0 0 1px rgba(32,30,29,.18);"></span>Run logged here
+          </div>
+          <div class="rtw-legend-row" style="color:var(--muted);">
+            <span class="rtw-legend-swatch" style="background:#8ed6cf;border:1.5px solid rgba(9,58,120,.7);"></span>Nobody yet
+          </div>
+        </div>
+        <div class="rtw-hr" style="margin:0 0 12px;"></div>
+        <div class="rtw-bullets">
+          <div class="rtw-bullet"><span class="rtw-bullet-dot"></span>Run in new places</div>
+          <div class="rtw-bullet"><span class="rtw-bullet-dot"></span>Meet new people</div>
+          <div class="rtw-bullet"><span class="rtw-bullet-dot"></span>Expand the STRAVA heat map</div>
+        </div>
+        <div class="rtw-hr"></div>
+        <div class="rtw-stats">
+          <div><div class="rtw-stat-num" id="runCount">0</div><div class="rtw-stat-label">runs logged</div></div>
+          <div><div class="rtw-stat-num" id="memberCount">0</div><div class="rtw-stat-label">members</div></div>
+          <div><div class="rtw-stat-num" id="totalKm">0</div><div class="rtw-stat-label">km together</div></div>
+        </div>
+      </div>
+
+      <div id="feedCard" class="rtw-card" hidden>
+        <div class="rtw-kicker" style="margin-bottom:4px;">Latest</div>
+        <div id="feedList"></div>
+      </div>
+    </div>
+
+    <div id="racesToolbar" hidden>
+      <div class="rtw-seg">
+        <span id="segAll" class="rtw-seg-item active">All 50</span>
+        <span id="segMajors" class="rtw-seg-item">Majors</span>
+        <span id="segOpenNow" class="rtw-seg-item">Open now</span>
+      </div>
+      <select id="regionSelect" class="rtw-select">
+        <option value="All">All regions</option><option value="Europe">Europe</option><option value="North America">North America</option><option value="Asia">Asia</option><option value="Oceania">Oceania</option><option value="South America">South America</option><option value="Africa">Africa</option>
+      </select>
+      <select id="entryFilterSelect" class="rtw-select">
+        <option value="All">Any entry type</option><option value="open">Open registration</option><option value="lottery">Lottery</option><option value="qualifier">Qualifier</option><option value="charity">Charity</option>
+      </select>
+      <div id="searchWrap">
+        <input type="text" id="searchInput" placeholder="Jump to a marathon...">
+        <div id="searchResults" hidden></div>
+      </div>
+      <div id="racesLegend">
+        <span><span style="width:8px;height:8px;background:#fc4c02;"></span>Major</span>
+        <span><span style="width:6px;height:6px;background:#ffd9a8;"></span>Other</span>
+      </div>
+    </div>
+
+    <div id="questWidget" hidden>
+      <div id="questButton">
+        <div id="questRing"></div>
+        <div style="text-align:center;">
+          <div id="questCountText">0/7</div>
+          <div id="questLabel">Six Star</div>
+        </div>
+      </div>
+      <div id="questPanel" hidden>
+        <div class="rtw-quest-title">Majors run</div>
+        <div id="questList"></div>
+      </div>
+    </div>
+
+    <div id="tooltip" hidden>
+      <div class="rtw-tt-title" id="tooltipTitle"></div>
+      <div class="rtw-tt-sub" id="tooltipSub"></div>
+    </div>
+
+    <div id="countryPanel" class="slide-panel">
+      <div class="rtw-panel-body rtw-scroll">
+        <div class="rtw-panel-close" id="closeCountryBtn">&times;</div>
+        <div id="countryPanelBody"></div>
+      </div>
+    </div>
+
+    <div id="marathonPanel" class="slide-panel">
+      <div class="rtw-panel-body rtw-scroll">
+        <div class="rtw-panel-close" id="closePanelBtn">&times;</div>
+        <div id="marathonPanelBody"></div>
+      </div>
+    </div>
+
+    <div id="countriesDrawer" class="drawer">
+      <div class="drawer-inner">
+        <div class="drawer-head">
+          <span class="drawer-title">Countries on the map</span>
+          <span class="drawer-meta" id="countriesDrawerMeta"></span>
+          <div style="flex:1;"></div>
+          <span class="drawer-close" id="closeCountriesBtn">&times;</span>
+        </div>
+        <div id="countriesGrid" class="rtw-scroll"></div>
+      </div>
+    </div>
+
+    <div id="addModal">
+      <div class="rtw-modal-card rtw-scroll">
+        <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:4px;">
+          <span class="drawer-title">Add a run to the map</span>
+          <div style="flex:1;"></div>
+          <span class="drawer-close" id="closeAddBtn">&times;</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:18px;">New countries turn the map orange and post to the feed.</div>
+        <div class="rtw-form-grid">
+          <div class="rtw-field rtw-field-full">
+            <label>Country</label>
+            <select id="formCountry"><option value="">Choose a country...</option></select>
+          </div>
+          <div class="rtw-field"><label>City or place</label><input type="text" id="formCity" placeholder="Kyoto"></div>
+          <div class="rtw-field"><label>Member</label><input type="text" id="formMember" placeholder="Your name"></div>
+          <div class="rtw-field"><label>Date</label><input type="date" id="formDate"></div>
+          <div class="rtw-field"><label>Strava profile</label><input type="text" id="formProfile" placeholder="@yourhandle"></div>
+          <div class="rtw-field"><label>Run title</label><input type="text" id="formTitle" placeholder="Kamo river dawn patrol"></div>
+          <div class="rtw-field"><label>Distance (km)</label><input type="number" step="0.1" id="formKm" placeholder="14.2"></div>
+          <div class="rtw-field"><label>Strava link</label><input type="text" id="formStrava" placeholder="strava.com/activities/..."></div>
+          <div class="rtw-field rtw-field-full"><label>Note</label><textarea rows="3" id="formNote" placeholder="Dawn loop along the Kamo river."></textarea></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:20px;">
+          <span class="rtw-pill-btn-primary" id="submitRunBtn">Add to the map</span>
+          <span style="font-size:11px;color:var(--muted);" id="addHint"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="recDrawer" class="drawer">
+      <div class="drawer-inner">
+        <div style="display:flex;align-items:center;margin-bottom:16px;">
+          <span class="drawer-title" style="font-size:20px;">Find your race</span>
+          <div style="flex:1;"></div>
+          <span class="drawer-close" id="closeRecBtn">&times;</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;">
+          <div class="rtw-rec-field">
+            <label>Home city</label>
+            <select id="recHomeSelect"></select>
+          </div>
+          <div class="rtw-rec-field">
+            <label>Goal</label>
+            <div class="rtw-goal-seg">
+              <span id="goalBq" class="rtw-goal-opt">BQ attempt</span>
+              <span id="goalPb" class="rtw-goal-opt active">PB</span>
+              <span id="goalBucket" class="rtw-goal-opt">Bucket-list</span>
+              <span id="goalFirst" class="rtw-goal-opt">First-timer</span>
+            </div>
+          </div>
+          <div class="rtw-rec-field">
+            <label>Season</label>
+            <select id="recSeasonSelect">
+              <option value="Winter">Winter</option><option value="Spring" selected>Spring</option><option value="Summer">Summer</option><option value="Fall">Fall</option>
+            </select>
+          </div>
+          <div class="rtw-rec-field" style="min-width:160px;">
+            <label>Budget: $<span id="recBudgetLabel">1500</span></label>
+            <input type="range" id="recBudgetRange" min="300" max="3000" step="50" value="1500" style="accent-color:#fc4c02;">
+          </div>
+        </div>
+        <div id="recResults" class="rtw-scroll" style="display:flex;flex-direction:column;gap:7px;max-height:240px;overflow-y:auto;"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
